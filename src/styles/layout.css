@@ -1,0 +1,80 @@
+/* src/styles/layout.css */
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 28px;
+  margin: 18px auto 0;
+  width: calc(100% - 56px);
+  max-width: 1200px;
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  border: 1px solid rgba(255,255,255,0.03);
+}
+
+.header__title {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0.4px;
+  color: var(--fg);
+}
+
+.header__subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Sidebar */
+.sidebar {
+  min-height: 60vh;
+  padding: 12px;
+}
+
+.sidebar__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* Workspace */
+.workspace {
+  min-height: 60vh;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Footer */
+.footer {
+  text-align: center;
+  padding: 18px;
+  margin-top: 28px;
+  opacity: 0.9;
+}
+
+/* Responsive tweaks */
+@media (max-width: 900px) {
+  .header {
+    width: calc(100% - 32px);
+    margin: 12px;
+    padding: 12px 16px;
+  }
+
+  .app__main {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  .sidebar {
+    order: 2;
+  }
+
+  .workspace {
+    order: 1;
+  }
+}

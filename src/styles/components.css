@@ -1,0 +1,467 @@
+/* src/styles/components.css
+   Consolidated and cleaned styles for V2 Flashcard
+   (keeps all original color variables and values unchanged)
+*/
+
+/* ---------- Theme variables (default) ---------- */
+:root {
+  --bg: #0f1720;
+  --surface: rgba(255,255,255,0.02);
+  --panel-bg: rgba(255,255,255,0.02);
+  --fg: #e6eef8;
+  --muted: rgba(230,238,248,0.6);
+  --accent: #3aa0ff;
+  --accent-bright: #4fc3f7;
+
+  --danger: #8b0000;
+  --danger-strong: #5a0000;
+  --danger-soft: rgba(255,80,80,0.06);
+
+  /* restore green shadow glow as originally intended */
+  --shadow: 0 16px 60px rgba(6, 190, 98);
+  --shadow-strong: 0 12px 40px rgba(0,90,45,0.32);
+  --glass: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+}
+
+/* ---------- Test Mode overrides ---------- */
+.app-test-mode {
+  --bg: #0b0606;
+  --surface: #1a0b0b;
+  --panel-bg: rgba(20,8,8,0.6);
+  --fg: #ffecec;
+  --muted: rgba(255,220,220,0.6);
+  --accent: #ff6b6b;
+  --danger: #ff2b2b;
+  --danger-strong: #8b0000;
+  --danger-soft: rgba(255,80,80,0.12);
+  --shadow: 0 25px 80px rgba(208, 5, 5, 0.741);
+  --shadow-strong: 0 18px 60px rgba(77,5,5,0.905);
+  --glass: linear-gradient(180deg, rgba(40,0,0,0.06), rgba(10,0,0,0.12));
+}
+
+/* ---------- Global transitions ---------- */
+:root, body, .panel, .flashcard__inner, .modal {
+  transition: background-color 220ms ease, color 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+
+/* ---------- Layout & Utilities ---------- */
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+.row { display: flex; gap: 8px; align-items: center; }
+.muted { color: var(--muted); }
+.text-small { font-size: 13px; }
+.panel {
+  background: var(--panel-bg);
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: var(--shadow);
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+  color: var(--fg);
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.btn--ghost { background: transparent; border: 1px solid rgba(255,255,255,0.04); }
+.btn--small { padding: 6px 8px; font-size: 13px; height: 32px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn--danger {
+  background: linear-gradient(180deg, var(--danger), var(--danger-strong));
+  color: #fff;
+  border: 1px solid rgba(255,80,80,0.12);
+  box-shadow: 0 6px 18px rgba(160,0,0,0.35);
+}
+
+/* Icon and compact buttons */
+.btn--icon {
+  padding: 6px;
+  min-width: 32px;
+  height: 32px;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.btn--icon:hover { background: rgba(255,255,255,0.02); }
+.btn--icon.btn--danger {
+  border-color: rgba(255,80,80,0.12);
+  color: var(--danger, #ff6b6b);
+}
+
+/* Link-style button helper (overrides .btn gradient for list items) */
+.btn--link {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  color: inherit !important;
+  text-align: left;
+  display: inline-block;
+  cursor: pointer;
+}
+
+/* Small text variant for link-style actions */
+.btn--link.text-small {
+  padding: 4px 6px;
+  font-size: 13px;
+  color: var(--muted);
+  background: transparent !important;
+  border: none !important;
+  border-radius: 6px;
+}
+
+/* Hover state for link-style actions (subtle) */
+.btn--link.text-small:hover {
+  color: var(--fg);
+  background: rgba(255,255,255,0.02);
+}
+
+/* Danger link keeps link appearance but uses danger color on text */
+.btn--link.text-small.btn--danger {
+  color: var(--danger);
+  background: transparent !important;
+  border: none !important;
+}
+.btn--link.text-small.btn--danger:hover {
+  background: rgba(255,80,80,0.06);
+  color: var(--fg);
+}
+
+/* ---------- Overlay / countdown / timer ---------- */
+.modal-overlay {
+  position: fixed;
+  left: 0; top: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.6);
+  z-index: 6000;
+}
+.overlay-countdown .overlay-text {
+  font-size: 22px;
+  color: var(--fg);
+  text-align: center;
+  margin-bottom: 8px;
+}
+.overlay-countdown .overlay-number {
+  font-size: 72px;
+  color: var(--danger);
+  font-weight: 800;
+  text-align: center;
+}
+.test-timer-bar {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  background: rgba(0,0,0,0.6);
+  color: var(--fg);
+  padding: 6px 10px;
+  border-radius: 8px;
+  z-index: 5000;
+}
+
+/* ---------- Flashcard ---------- */
+.flashcard { width: 640px; max-width: 92vw; margin: 0 auto; position: relative; }
+.flashcard__inner {
+  width: 100%;
+  height: 320px;
+  border-radius: 12px;
+  background: var(--glass);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: var(--shadow);
+  transform-style: preserve-3d;
+  color: var(--fg);
+}
+.flashcard__face {
+  position: absolute;
+  backface-visibility: hidden;
+  width: 100%;
+  height: 100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+.flashcard__front { transform: rotateY(0deg); }
+.flashcard__back { transform: rotateY(180deg); }
+.flashcard--flipped .flashcard__front { transform: rotateY(-180deg); }
+.flashcard--flipped .flashcard__back { transform: rotateY(0deg); }
+.flashcard__text { font-size: 20px; line-height: 1.3; text-align: center; color: var(--fg); }
+
+.flashcard-container.test-mode {
+  box-shadow: var(--shadow-strong);
+  border: 1px solid rgba(120, 0, 0, 0.9);
+  background: var(--glass);
+  border-radius: 12px;
+  padding: 8px;
+}
+
+/* ---------- Card star button ---------- */
+.card-star {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.7);
+}
+.card-star.active { color: #ffd666; text-shadow: 0 2px 6px rgba(0,0,0,0.45); }
+
+/* ---------- Encouragement / Toasts ---------- */
+.encourage-box {
+  background: rgba(0,0,0,0.78);
+  color: var(--fg);
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 15px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  pointer-events: none;
+  max-width: 340px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.combo-toast {
+  background: rgba(255,255,255,0.06);
+  color: var(--fg);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 13px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+  pointer-events: none;
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.star-toast {
+  background: rgba(0,0,0,0.85);
+  color: var(--fg);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  pointer-events: none;
+}
+
+/* ---------- Confetti pieces ---------- */
+.confetti-piece { width: 8px; height: 12px; border-radius: 2px; position: absolute; opacity: 1; }
+
+/* ---------- Ranking (sidebar) ---------- */
+.ranking-list { margin: 0; padding: 0; list-style: none; }
+.ranking-item { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: 8px; }
+.ranking-item + .ranking-item { margin-top: 6px; }
+.ranking-medal { font-size: 20px; width: 36px; text-align: center; }
+.ranking-name { font-weight: 700; color: var(--fg); }
+.ranking-meta { font-size: 12px; color: var(--muted); }
+
+/* ---------- Inputs ---------- */
+input[type="text"], input[type="number"] {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(0,0,0,0.25);
+  color: var(--fg);
+}
+input[type="text"]:focus, input[type="number"]:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--danger-soft);
+  border-color: rgba(255,80,80,0.18);
+}
+
+/* Accessibility focus */
+input:focus, button:focus { outline: 2px solid rgba(255,255,255,0.08); outline-offset: 2px; }
+
+/* Responsive tweaks */
+@media (max-width: 720px) {
+  .flashcard__inner { height: 260px; }
+  .encourage-box { font-size: 14px; padding: 8px 12px; }
+  .combo-toast { font-size: 12px; padding: 6px 10px; }
+  .overlay-countdown .overlay-number { font-size: 56px; }
+}
+
+/* ---------- Sidebar and Deck list ---------- */
+.sidebar { width: 320px; }
+
+.deck-item {
+  background: transparent;
+  border-radius: 6px;
+  padding: 6px 4px;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+.deck-item:hover { background: rgba(255,255,255,0.02); }
+
+/* Active deck: bright left edge for clear selection */
+.deck-item.active {
+  border-left: 4px solid var(--accent-bright);
+  padding-left: 2px;
+}
+
+/* Deck button text plain and transparent */
+.deck-button {
+  background: transparent;
+  color: inherit;
+  padding: 6px 8px;
+  border: none;
+  text-align: left;
+  width: 100%;
+}
+.deck-button:focus { outline: none; box-shadow: none; }
+
+/* Actions under each deck name (link-style, subtle) */
+.deck-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+/* Star badge next to deck name */
+.deck-star-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,0.03);
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--accent, #ffd54f);
+  margin-left: 4px;
+  border: 1px solid rgba(255,255,255,0.03);
+}
+.deck-star-badge .star-icon { font-size: 12px; line-height: 1; }
+.deck-star-badge .star-count { font-weight: 600; font-size: 12px; }
+
+/* Small New button */
+.btn--small { padding: 6px 10px; font-size: 13px; height: 32px; line-height: 1; }
+
+/* ---------- Modal / DeckEditor width ---------- */
+/* Ensure DeckEditor modal is wide and not constrained by sidebar */
+.modal.panel {
+  max-width: 760px !important;
+  width: calc(100% - 48px);
+}
+
+/* If DeckEditor uses a specific wrapper class, prefer targeting that class instead of .modal.panel */
+/* Example:
+.deck-editor-modal.panel { max-width: 760px !important; width: calc(100% - 48px); }
+*/
+
+@media (max-width: 900px) {
+  .sidebar { width: 300px; }
+  .modal.panel { max-width: 92%; }
+}
+
+/* small inline danger button used next to Menu */
+.btn--danger-inline {
+  color: var(--danger);
+  border-color: rgb(233, 5, 5);
+  background: transparent;
+}
+
+/* hover: highlight with subtle red background and white text */
+.btn--danger-inline:hover {
+  background: rgb(248, 8, 8);
+  color: var(--fg);
+}
+
+/* Ensure modal Clear buttons use the danger styling and stand out */
+.modal .btn--danger,
+.panel .btn--danger {
+  background: linear-gradient(180deg, var(--danger), var(--danger-strong));
+  color: #fff;
+  border: 1px solid rgb(233, 5, 5);
+  box-shadow: 0 6px 18px rgba(146, 0, 0, 0.978);
+}
+
+/* Hover state for clarity */
+.modal .btn--danger:hover,
+.panel .btn--danger:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
+/* Disabled state remains visibly disabled but not greyed out too much */
+.modal .btn--danger:disabled,
+.panel .btn--danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: none;
+}
+
+
+/* square button spacing */
+.btn--square { padding: 0; }
+
+
+/* donate button specific */
+.donate-button {
+  box-shadow: none;
+  transition: transform .08s ease, box-shadow .08s ease;
+}
+.donate-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(4, 239, 20, 0.944);
+}
+
+/* modal overlay (reuse existing modal styles if present) */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.914);
+  z-index: 1400;
+}
+.panel { background: var(--bg); color: var(--fg); border-radius: 8px; }
+
+/* overlay centered and above all UI */
+.donate-modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.45);
+  z-index: 99999; /* very high to sit above study view */
+  padding: 20px;
+}
+
+/* large panel like DeckEditor */
+.donate-large-panel {
+  width: min(980px, 96%);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 20px;
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+}
+
+/* donate button hover */
+.donate-button {
+  box-shadow: none;
+  transition: transform .08s ease, box-shadow .08s ease;
+}
+.donate-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(27,94,32,0.08);
+}

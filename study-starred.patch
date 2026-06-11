@@ -1,0 +1,44 @@
+@'
+diff --git a/src/components/ControlsBar.jsx b/src/components/ControlsBar.jsx
+--- a/src/components/ControlsBar.jsx
++++ b/src/components/ControlsBar.jsx
+@@ -1,12 +1,28 @@
+-import React from 'react';
+-
+-const ControlsBar = ({ onEnterTestMode, onLonger }) => {
+-  return (
+-    <div className="controls-bar">
+-      <button onClick={onEnterTestMode} className="btn btn-primary">
+-        Enter test mode
+-      </button>
+-      <button onClick={() => onStudyStarred()} className="btn btn-secondary">
+-        Study starred words
+-      </button>
+-    </div>
+-  );
+-};
+-
+-export default ControlsBar;
++import React from 'react';
++
++// ControlsBar: renders primary controls for starting tests and studying starred words.
++// Props:
++// - onEnterTestMode: () => void
++// - onLonger: (boolean) => void
++// - onStudyStarred: () => void
++const ControlsBar = ({ onEnterTestMode, onLonger, onStudyStarred }) => {
++  return (
++    <div className="controls-bar">
++      <button onClick={onEnterTestMode} className="btn btn-primary">
++        Enter test mode
++      </button>
++
++      {/* Replaced the previous "Longer" switch with a Study Starred Words button. */}
++      <button onClick={onStudyStarred} className="btn btn-secondary">
++        Study starred words
++      </button>
++    </div>
++  );
++};
++
++export default ControlsBar;
