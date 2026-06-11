@@ -1,25 +1,26 @@
-import i18n from 'i18next';
-import { initReactI18next } from 'react-i18next';
-import Backend from 'i18next-http-backend';
-import LanguageDetector from 'i18next-browser-languagedetector';
+// src/i18n.js
+import i18n from 'i18next'
+import { initReactI18next } from 'react-i18next'
+import en from './locales/en/common.json'
+import ko from './locales/ko/common.json'
+import zhHant from './locales/zh-Hant/common.json'
 
 i18n
-  .use(Backend) // loads translations from /locales
-  .use(LanguageDetector) // detects user language
   .use(initReactI18next)
   .init({
+    resources: {
+      en: { common: en },
+      ko: { common: ko },
+      'zh-Hant': { common: zhHant }
+    },
+    lng: 'en',
     fallbackLng: 'en',
-    supportedLngs: ['en','ko','zh-Hant'], // English, Korean, Traditional Chinese
-    ns: ['common'], // namespaces you use
+    ns: ['common'],
     defaultNS: 'common',
-    backend: {
-      loadPath: '/locales/{{lng}}/{{ns}}.json'
-    },
-    detection: {
-      order: ['querystring','localStorage','navigator'],
-      caches: ['localStorage']
-    },
     interpolation: { escapeValue: false }
-  });
+  })
 
-export default i18n;
+// 偵錯用：暫時暴露 i18n 到 window（部署確認後可移除）
+window.i18n = i18n
+
+export default i18n
