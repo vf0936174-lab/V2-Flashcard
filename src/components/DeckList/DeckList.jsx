@@ -38,9 +38,11 @@ export default function DeckList({ onSelectDeck, activeDeckId }) {
     }
 
     window.addEventListener('decks-changed', onDecksChanged);
+    window.addEventListener('decks-cleared', onDecksChanged);
     return () => {
       mounted = false;
       window.removeEventListener('decks-changed', onDecksChanged);
+      window.removeEventListener('decks-cleared', onDecksChanged);
     };
   }, []);
 
@@ -74,7 +76,20 @@ export default function DeckList({ onSelectDeck, activeDeckId }) {
     try {
       const obj = await deckService.exportDeck(deckId);
       const json = JSON.stringify(obj, null, 2);
-      if (navigator.clipboard && navigator.clipboard.writeText) {
+      const safeName = (obj.name || 'deck').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'deck';
+
+      if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof document !== 'undefined' && document.createElement) {
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${safeName}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        alert('Deck JSON downloaded');
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(json);
         alert('Deck JSON copied to clipboard');
       } else {

@@ -1,6 +1,6 @@
 // src/services/testService.js
-import * as deckService from './deckService';
-import * as storage from './storageService';
+import * as deckService from './deckService.js';
+import * as storage from './storageService.js';
 
 const RANKING_KEY_PREFIX = 'ranking:deck:';
 
@@ -31,6 +31,8 @@ function normalizeEntryRaw(raw) {
   return {
     id: raw.id || `r-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
     name: (raw.name || 'Anonymous') + '',
+    studentId: raw.studentId || null,
+    studentName: (raw.studentName || raw.name || 'Anonymous') + '',
     score,
     total,
     pct: total > 0 ? Math.round((score / total) * 100) : 0,
@@ -52,18 +54,28 @@ function sortRanking(list) {
   });
 }
 
+function reverseCard(card) {
+  return {
+    ...card,
+    front: card.back || '',
+    back: card.front || '',
+    meta: { ...(card.meta || {}), testDirection: 'B>A' }
+  };
+}
+
 /* ---------- test deck helpers ---------- */
 export async function createTestDeckFrom(deckId, { count, style } = {}) {
   const deck = await deckService.getDeck(deckId);
   if (!deck) throw new Error('Deck not found');
   let cards = (deck.cards || []).slice();
 
-  if (style === 'B>A') cards = cards.slice().reverse();
+  if (style === 'B>A') cards = cards.map(reverseCard);
   if (style === 'Mixed') {
     for (let i = cards.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [cards[i], cards[j]] = [cards[j], cards[i]];
     }
+    cards = cards.map((card) => (Math.random() < 0.5 ? reverseCard(card) : card));
   }
 
   cards = cards.slice(0, Math.min(count || cards.length, cards.length));
@@ -94,7 +106,7 @@ export async function saveTestDeck(deckId, testDeck) {
  * Returns the saved entry (with id, pct, date).
  * Dispatches 'ranking-updated' after persistence.
  */
-export async function saveRanking(deckId, { name, score, total, durationMs = 0, date = null }) {
+export async function saveRanking(deckId, { name, studentId = null, studentName = null, score, total, durationMs = 0, date = null }) {
   if (!deckId) throw new Error('deckId required');
   const key = keyFor(deckId);
   const list = await storage.load(key, []);
@@ -103,6 +115,8 @@ export async function saveRanking(deckId, { name, score, total, durationMs = 0, 
   const raw = {
     id: `r-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
     name: name || 'Anonymous',
+    studentId,
+    studentName: studentName || name || 'Anonymous',
     score,
     total,
     durationMs,
@@ -154,6 +168,8 @@ export async function updateRankingEntry(deckId, entryId, updates = {}) {
     ...existing,
     // allow explicit zero values; use undefined check rather than falsy
     name: updates.name !== undefined ? updates.name : existing.name,
+    studentId: updates.studentId !== undefined ? updates.studentId : existing.studentId,
+    studentName: updates.studentName !== undefined ? updates.studentName : existing.studentName,
     score: updates.score !== undefined ? updates.score : existing.score,
     total: updates.total !== undefined ? updates.total : existing.total,
     durationMs: updates.durationMs !== undefined ? updates.durationMs : existing.durationMs,

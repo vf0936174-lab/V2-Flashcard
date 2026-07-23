@@ -1,8 +1,9 @@
 // src/services/studyService.js
-import * as deckService from './deckService';
-import * as storage from './storageService';
+import * as deckService from './deckService.js';
+import * as storage from './storageService.js';
 
 const SESSION_PREFIX = 'session:';
+const ACTIVE_SESSION_PREFIX = 'session:active:';
 
 export function createSession(deck, options = {}) {
   const queue = (deck.cards || []).map((c) => ({
@@ -80,11 +81,32 @@ export function recordAnswer(session, cardId, quality) {
 export async function persistSession(session) {
   if (!session || !session.id) throw new Error('Invalid session');
   await storage.save(SESSION_PREFIX + session.id, session);
+  if (session.deckId) {
+    if (session.endedAt) {
+      await storage.remove(ACTIVE_SESSION_PREFIX + session.deckId);
+    } else {
+      await storage.save(ACTIVE_SESSION_PREFIX + session.deckId, session.id);
+    }
+  }
   return true;
 }
 
 export async function loadSession(sessionId) {
   return storage.load(SESSION_PREFIX + sessionId, null);
+}
+
+export async function loadActiveSession(deckId) {
+  if (!deckId) return null;
+  const sessionId = await storage.load(ACTIVE_SESSION_PREFIX + deckId, null);
+  if (!sessionId) return null;
+
+  const session = await loadSession(sessionId);
+  if (!session || session.endedAt) {
+    await storage.remove(ACTIVE_SESSION_PREFIX + deckId);
+    return null;
+  }
+
+  return session;
 }
 
 export async function endSession(session) {

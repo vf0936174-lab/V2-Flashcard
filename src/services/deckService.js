@@ -1,8 +1,18 @@
 // src/services/deckService.js
-import * as storage from './storageService';
+import * as storage from './storageService.js';
 
 const DECK_INDEX_KEY = 'decks:index';
 const ALL_STAR_ID = 'all-star-deck';
+const DECK_SCHEMA_VERSION = 1;
+const CARD_SCHEMA_VERSION = 1;
+
+function _createCardId(index = 0) {
+  return `card-${Date.now()}-${index}-${Math.floor(Math.random() * 10000)}`;
+}
+
+function _isTemporaryCardId(id) {
+  return !id || String(id).startsWith('tmp-');
+}
 
 async function _ensureIndex() {
   const idx = await storage.load(DECK_INDEX_KEY, []);
@@ -19,6 +29,7 @@ async function _ensureAllStarDeck() {
 
   const deck = {
     id: ALL_STAR_ID,
+    schemaVersion: DECK_SCHEMA_VERSION,
     name: 'All Star',
     meta: { system: true },
     cards: [],
@@ -47,8 +58,8 @@ function _emitDecksChanged() {
 }
 
 export async function getDecks() {
-  const ids = await _ensureIndex();
   await _ensureAllStarDeck();
+  const ids = await _ensureIndex();
   const decks = await Promise.all(ids.map(async (id) => {
     const d = await storage.load(`deck:${id}`, null);
     return d;
@@ -64,6 +75,7 @@ export async function createDeck({ id = null, name = 'New Deck', meta = {} } = {
   const deckId = id || `deck-${Date.now()}`;
   const deck = {
     id: deckId,
+    schemaVersion: DECK_SCHEMA_VERSION,
     name,
     meta,
     cards: [],
@@ -72,20 +84,87 @@ export async function createDeck({ id = null, name = 'New Deck', meta = {} } = {
   };
   await storage.save(`deck:${deckId}`, deck);
   const idx = await _ensureIndex();
-  idx.unshift(deckId);
-  const filtered = idx.filter((i) => i !== ALL_STAR_ID);
+  const filtered = idx.filter((i) => i !== deckId && i !== ALL_STAR_ID);
   const allStarExists = (await storage.load(`deck:${ALL_STAR_ID}`, null)) ? [ALL_STAR_ID] : [];
-  await storage.save(DECK_INDEX_KEY, [...filtered, ...allStarExists]);
+  await storage.save(DECK_INDEX_KEY, [deckId, ...filtered, ...allStarExists]);
   _emitDecksChanged();
   return deck;
 }
 
+export async function updateDeck(deckId, updates = {}) {
+  const existing = await getDeck(deckId);
+  if (!existing) throw new Error('Deck not found');
+
+  const now = new Date().toISOString();
+  const nextDeck = {
+    ...existing,
+    schemaVersion: DECK_SCHEMA_VERSION,
+    name: updates.name !== undefined ? String(updates.name || '').trim() || 'Untitled' : existing.name,
+    meta: updates.meta ? { ...(existing.meta || {}), ...updates.meta } : (existing.meta || {}),
+    updatedAt: now
+  };
+
+  if (Array.isArray(updates.cards)) {
+    const existingById = new Map((existing.cards || []).map((card) => [card.id, card]));
+    const usedIds = new Set();
+
+    nextDeck.cards = updates.cards.map((card, index) => {
+      const incomingId = !_isTemporaryCardId(card.id) ? card.id : null;
+      const oldCard = incomingId ? existingById.get(incomingId) : null;
+      let cardId = incomingId || _createCardId(index);
+
+      while (usedIds.has(cardId)) {
+        cardId = _createCardId(index);
+      }
+      usedIds.add(cardId);
+
+      return {
+        id: cardId,
+        schemaVersion: CARD_SCHEMA_VERSION,
+        front: card.front || '',
+        back: card.back || '',
+        meta: { ...(oldCard?.meta || {}), ...(card.meta || {}) },
+        createdAt: oldCard?.createdAt || card.createdAt || now,
+        updatedAt: now
+      };
+    });
+  }
+
+  await storage.save(`deck:${deckId}`, nextDeck);
+
+  if (deckId !== ALL_STAR_ID && Array.isArray(updates.cards)) {
+    await _syncAllStarForDeck(deckId, nextDeck.cards || []);
+  }
+
+  _emitDecksChanged();
+  return nextDeck;
+}
+
+export async function renameDeck(deckId, name) {
+  return updateDeck(deckId, { name });
+}
+
 export async function deleteDeck(deckId) {
   if (deckId === ALL_STAR_ID) throw new Error('Cannot delete All Star deck');
+  const deck = await getDeck(deckId);
   const idx = await _ensureIndex();
   const newIdx = idx.filter((i) => i !== deckId);
   await storage.save(DECK_INDEX_KEY, newIdx);
   await storage.remove(`deck:${deckId}`);
+
+  const all = await _ensureAllStarDeck();
+  const deckCardIds = new Set((deck?.cards || []).map((c) => c.id));
+  const nextAllCards = (all.cards || []).filter((c) => {
+    const originDeck = c.meta?._originDeck;
+    if (originDeck) return originDeck !== deckId;
+    return !deckCardIds.has(c.id);
+  });
+  if (nextAllCards.length !== (all.cards || []).length) {
+    all.cards = nextAllCards;
+    all.updatedAt = new Date().toISOString();
+    await storage.save(`deck:${ALL_STAR_ID}`, all);
+  }
+
   _emitDecksChanged();
   return true;
 }
@@ -93,9 +172,10 @@ export async function deleteDeck(deckId) {
 export async function addCard(deckId, card) {
   const deck = await getDeck(deckId);
   if (!deck) throw new Error('Deck not found');
-  const cardId = card.id || `card-${Date.now()}`;
+  const cardId = !_isTemporaryCardId(card.id) ? card.id : _createCardId();
   const newCard = {
     id: cardId,
+    schemaVersion: CARD_SCHEMA_VERSION,
     front: card.front || '',
     back: card.back || '',
     meta: card.meta || {},
@@ -133,9 +213,11 @@ export async function updateCard(deckId, cardId, updates = {}) {
   // star change detection: treat undefined as false
   const oldStar = Boolean(safeOldMeta.star);
   const newStar = Boolean(merged.meta && merged.meta.star);
-  if (oldStar !== newStar) {
+  if (newStar) {
+    await _syncAllStar(deckId, merged, true);
+  } else if (oldStar !== newStar) {
     // pass owner deck id so All Star copy records origin
-    await _syncAllStar(deckId, merged, newStar);
+    await _syncAllStar(deckId, merged, false);
   }
 
   // emit after update so UI can refresh immediately
@@ -150,18 +232,63 @@ export async function removeCard(deckId, cardId) {
   deck.updatedAt = new Date().toISOString();
   await storage.save(`deck:${deckId}`, deck);
   const all = await _ensureAllStarDeck();
-  all.cards = all.cards.filter((c) => c.id !== cardId);
+  all.cards = all.cards.filter((c) => {
+    const originDeck = c.meta?._originDeck;
+    return !(c.id === cardId && (!originDeck || originDeck === deckId));
+  });
   await storage.save(`deck:${ALL_STAR_ID}`, all);
   _emitDecksChanged();
   return true;
 }
 
+async function _syncAllStarForDeck(ownerDeckId, ownerCards) {
+  const all = await _ensureAllStarDeck();
+  const starredById = new Map(
+    (ownerCards || [])
+      .filter((card) => Boolean(card.meta && card.meta.star))
+      .map((card) => [card.id, card])
+  );
+
+  let changed = false;
+  all.cards = (all.cards || []).filter((card) => {
+    const originDeck = card.meta?._originDeck;
+    if (originDeck !== ownerDeckId) return true;
+    if (starredById.has(card.id)) return true;
+    changed = true;
+    return false;
+  });
+
+  for (const card of starredById.values()) {
+    const existingIdx = all.cards.findIndex((c) => c.id === card.id && c.meta?._originDeck === ownerDeckId);
+    const copy = {
+      ...card,
+      meta: { ...(card.meta || {}), _originDeck: ownerDeckId },
+      updatedAt: new Date().toISOString()
+    };
+
+    if (existingIdx >= 0) {
+      all.cards[existingIdx] = copy;
+    } else {
+      all.cards.unshift(copy);
+    }
+    changed = true;
+  }
+
+  if (changed) {
+    all.updatedAt = new Date().toISOString();
+    await storage.save(`deck:${ALL_STAR_ID}`, all);
+  }
+}
+
 async function _syncAllStar(ownerDeckId, card, add) {
   const all = await _ensureAllStarDeck();
-  const exists = all.cards.find((c) => c.id === card.id);
+  const existingIdx = all.cards.findIndex((c) => {
+    const originDeck = c.meta?._originDeck;
+    return c.id === card.id && (!originDeck || originDeck === ownerDeckId);
+  });
 
   if (add) {
-    if (!exists) {
+    if (existingIdx === -1) {
       const copy = {
         ...card,
         meta: { ...(card.meta || {}), _originDeck: ownerDeckId },
@@ -172,14 +299,21 @@ async function _syncAllStar(ownerDeckId, card, add) {
       all.updatedAt = new Date().toISOString();
       await storage.save(`deck:${ALL_STAR_ID}`, all);
     } else {
-      all.cards = all.cards.map((c) =>
-        c.id === card.id ? { ...c, ...card, meta: { ...(card.meta || {}), _originDeck: c.meta?._originDeck || ownerDeckId }, updatedAt: new Date().toISOString() } : c
-      );
+      const existing = all.cards[existingIdx];
+      all.cards[existingIdx] = {
+        ...existing,
+        ...card,
+        meta: { ...(card.meta || {}), _originDeck: existing.meta?._originDeck || ownerDeckId },
+        updatedAt: new Date().toISOString()
+      };
       await storage.save(`deck:${ALL_STAR_ID}`, all);
     }
   } else {
-    if (exists) {
-      all.cards = all.cards.filter((c) => c.id !== card.id);
+    if (existingIdx !== -1) {
+      all.cards = all.cards.filter((c) => {
+        const originDeck = c.meta?._originDeck;
+        return !(c.id === card.id && (!originDeck || originDeck === ownerDeckId));
+      });
       all.updatedAt = new Date().toISOString();
       await storage.save(`deck:${ALL_STAR_ID}`, all);
     }
@@ -206,9 +340,17 @@ export async function exportDeck(deckId) {
   if (!deck) throw new Error('Deck not found');
   const exportObj = {
     id: deck.id,
+    schemaVersion: deck.schemaVersion || DECK_SCHEMA_VERSION,
     name: deck.name,
     meta: deck.meta || {},
-    cards: deck.cards.map((c) => ({ id: c.id, front: c.front, back: c.back, meta: c.meta || {}, createdAt: c.createdAt })),
+    cards: deck.cards.map((c) => ({
+      id: c.id,
+      schemaVersion: c.schemaVersion || CARD_SCHEMA_VERSION,
+      front: c.front,
+      back: c.back,
+      meta: c.meta || {},
+      createdAt: c.createdAt
+    })),
     exportedAt: new Date().toISOString()
   };
   return exportObj;

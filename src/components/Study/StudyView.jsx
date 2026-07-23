@@ -7,6 +7,7 @@ import * as deckService from '../../services/deckService';
 import * as studyService from '../../services/studyService';
 import * as reportService from '../../services/reportService';
 import * as testService from '../../services/testService';
+import * as studentService from '../../services/studentService';
 import DeckEditor from '../Editor/DeckEditor';
 import {
   showEncouragementRight,
@@ -52,6 +53,8 @@ export default function StudyView({ deckId }) {
   const [testStartTime, setTestStartTime] = useState(null);
   const [testResultsVisible, setTestResultsVisible] = useState(false);
   const [testStudentName, setTestStudentName] = useState('');
+  const [selectedStudentId, setSelectedStudentId] = useState(null);
+  const [students, setStudents] = useState([]);
   const [perCardSeconds, setPerCardSeconds] = useState(15);
   const [perCardRemaining, setPerCardRemaining] = useState(15);
   const perCardTimerRef = useRef(null);
@@ -62,6 +65,53 @@ export default function StudyView({ deckId }) {
 
   // Prevent double finish / re-entrancy when timers and user actions race
   const testFinishedRef = useRef(false);
+
+  function prepareFreshSession(deckData) {
+    const s = studyService.createSession(deckData || { id: deckId, cards: [] });
+    s.queue = Array.isArray(s.queue) ? s.queue : [];
+    s.queue.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    s.index = Math.max(0, Math.min(s.index || 0, Math.max(0, s.queue.length - 1)));
+    return s;
+  }
+
+  function reconcileSavedSession(savedSession, deckData) {
+    if (!savedSession || !Array.isArray(savedSession.queue)) {
+      return prepareFreshSession(deckData);
+    }
+
+    const fresh = prepareFreshSession(deckData);
+    const freshById = new Map(fresh.queue.map((card) => [card.id, card]));
+    const queue = savedSession.queue
+      .map((savedCard) => {
+        const currentCardData = freshById.get(savedCard.id);
+        if (!currentCardData) return null;
+        return {
+          ...currentCardData,
+          interval: savedCard.interval ?? currentCardData.interval,
+          easeFactor: savedCard.easeFactor ?? currentCardData.easeFactor,
+          repetitions: savedCard.repetitions ?? currentCardData.repetitions,
+          due: savedCard.due ?? currentCardData.due
+        };
+      })
+      .filter(Boolean);
+
+    const savedIds = new Set(queue.map((card) => card.id));
+    const newCards = fresh.queue.filter((card) => !savedIds.has(card.id));
+    const nextQueue = [...queue, ...newCards];
+
+    return {
+      ...savedSession,
+      queue: nextQueue,
+      logs: Array.isArray(savedSession.logs) ? savedSession.logs : [],
+      index: Math.max(0, Math.min(savedSession.index || 0, Math.max(0, nextQueue.length - 1)))
+    };
+  }
+
+  function setActiveSession(nextSession) {
+    sessionRef.current = nextSession;
+    setSession(nextSession);
+    setCurrentCard((nextSession.queue && nextSession.queue.length > 0) ? nextSession.queue[nextSession.index] : null);
+  }
 
   useEffect(() => { testIndexRef.current = testIndex; }, [testIndex]);
   useEffect(() => { testDeckRef.current = testDeck; }, [testDeck]);
@@ -74,26 +124,57 @@ export default function StudyView({ deckId }) {
     return () => { document.body.classList.remove(cls); };
   }, [testMode]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadStudents() {
+      try {
+        const list = await studentService.getStudents();
+        if (mounted) setStudents(list);
+      } catch (err) {
+        console.error('load students failed', err);
+        if (mounted) setStudents([]);
+      }
+    }
+
+    loadStudents();
+    window.addEventListener('students-changed', loadStudents);
+    return () => {
+      mounted = false;
+      window.removeEventListener('students-changed', loadStudents);
+    };
+  }, []);
+
+  function findStudentByName(name) {
+    const clean = String(name || '').trim().toLocaleLowerCase();
+    if (!clean) return null;
+    return students.find((student) => student.name.toLocaleLowerCase() === clean) || null;
+  }
+
+  function handleStudentSelect(name) {
+    const student = students.find((item) => item.name === name) || null;
+    setSelectedStudentId(student?.id || null);
+    setTestStudentName(name);
+  }
+
+  function handleStudentNameChange(name) {
+    const student = findStudentByName(name);
+    setSelectedStudentId(student?.id || null);
+    setTestStudentName(name);
+  }
+
 useEffect(() => {
   let mounted = true;
   async function init() {
     setLoading(true);
     const d = await deckService.getDeck(deckId);
+    const saved = await studyService.loadActiveSession(deckId);
     if (!mounted) return;
     setDeck(d);
 
-    // Create a fresh session and ensure index is valid (0 if there are cards)
-    const s = studyService.createSession(d || { id: deckId, cards: [] });
-    s.queue = Array.isArray(s.queue) ? s.queue : [];
-    s.queue.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    s.index = Math.max(0, Math.min(s.index || 0, Math.max(0, s.queue.length - 1)));
-
-    sessionRef.current = s;
-    setSession(s);
-
-    // Pick the current card deterministically from the session index
-    const current = (s.queue && s.queue.length > 0) ? s.queue[s.index] : null;
-    setCurrentCard(current);
+    const s = saved ? reconcileSavedSession(saved, d || { id: deckId, cards: [] }) : prepareFreshSession(d || { id: deckId, cards: [] });
+    setActiveSession(s);
+    await studyService.persistSession(s).catch(() => {});
 
     setGlobalFlipMap({});
     setAllFlipped(false);
@@ -108,14 +189,25 @@ useEffect(() => {
     try {
       const d = await deckService.getDeck(deckId);
       if (!mounted) return;
-      if (d) setDeck(d);
+      if (!d) {
+        setDeck(null);
+        setSession(null);
+        setCurrentCard(null);
+        sessionRef.current = null;
+        return;
+      }
+      setDeck(d);
 
       if (sessionRef.current && Array.isArray(sessionRef.current.queue)) {
         // Build a map of authoritative cards and merge meta
         if (d && Array.isArray(d.cards)) {
           const map = new Map(d.cards.map((c) => [c.id, c]));
           sessionRef.current.queue = sessionRef.current.queue
-            .map((q) => (map.has(q.id) ? { ...q, meta: map.get(q.id).meta } : q))
+            .map((q) => {
+              const latest = map.get(q.id);
+              if (!latest) return null;
+              return { ...q, ...latest, interval: q.interval, easeFactor: q.easeFactor, repetitions: q.repetitions, due: q.due };
+            })
             .filter(Boolean);
         }
 
@@ -123,6 +215,7 @@ useEffect(() => {
         sessionRef.current.index = Math.max(0, Math.min(sessionRef.current.index || 0, Math.max(0, sessionRef.current.queue.length - 1)));
         setSession({ ...sessionRef.current });
         setCurrentCard(sessionRef.current.queue[sessionRef.current.index] || null);
+        studyService.persistSession(sessionRef.current).catch(() => {});
       }
     } catch (err) {
       console.error('onDecksChanged error', err);
@@ -464,11 +557,9 @@ async function handleAnswer(cardId, quality) {
   }
   async function restartSession() {
     if (!deck) return;
-    const s = studyService.createSession(deck);
-    s.queue.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    sessionRef.current = s;
-    setSession(s);
-    setCurrentCard(studyService.nextCard(s));
+    const s = prepareFreshSession(deck);
+    setActiveSession(s);
+    await studyService.persistSession(s).catch(() => {});
     setGlobalFlipMap({});
     setAllFlipped(false);
     setStudyStarredMode(false);
@@ -554,6 +645,13 @@ async function handleAnswer(cardId, quality) {
     showStarToast('Test prepared');
   }
   function beginTestCountdown() {
+    const preparedDeck = testDeckRef.current || testDeck;
+    if (!preparedDeck || !Array.isArray(preparedDeck.cards) || preparedDeck.cards.length === 0) {
+      showStarToast('No cards available for test');
+      setTestCountdown(null);
+      return;
+    }
+
     setTestCountdown(3);
     let c = 3;
     clearInterval(countdownTimerRef.current);
@@ -573,6 +671,9 @@ async function handleAnswer(cardId, quality) {
         setTestDeck(td);
         testDeckRef.current = td;
         beginTestCountdown();
+      }).catch((err) => {
+        console.error('startTest failed', err);
+        showStarToast('Failed to prepare test');
       });
     } else {
       beginTestCountdown();
@@ -692,6 +793,8 @@ async function handleAnswer(cardId, quality) {
     try {
       const entry = await testService.saveRanking(deckId, {
         name: testStudentName || 'Anonymous',
+        studentId: selectedStudentId,
+        studentName: testStudentName || 'Anonymous',
         score: finalScore,
         total,
         durationMs
@@ -771,6 +874,7 @@ async function handleAnswer(cardId, quality) {
     setTestCountdown(null);
     setTestDeck(null);
     testDeckRef.current = null;
+    setSelectedStudentId(null);
     resetTestState();
   }
 
@@ -778,6 +882,8 @@ async function handleAnswer(cardId, quality) {
   if (!deck) return <div className="muted text-small">Deck not found.</div>;
 
   const visibleCard = (testMode && testRunning && testDeckRef.current) ? testDeckRef.current.cards[testIndexRef.current] : currentCard;
+  const testResultTotal = testDeckRef.current?.cards?.length || 0;
+  const testResultPct = testResultTotal ? Math.round((testScore / testResultTotal) * 100) : 0;
 
   return (
     <div className="study-root" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -829,13 +935,27 @@ async function handleAnswer(cardId, quality) {
           <div className="panel" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                       <button className="btn btn--ghost" onClick={openPrepareTest}>Prepare Test</button>
 
-            <input
-              ref={studentInputRef}
-              placeholder="Student or Team name"
-              value={testStudentName}
-              onChange={(e) => setTestStudentName(e.target.value)}
-              style={{ flex: 1 }}
-            />
+            <div style={{ display: 'flex', gap: 8, flex: 1 }}>
+              <select
+                value={students.some((student) => student.name === testStudentName) ? testStudentName : ''}
+                onChange={(e) => handleStudentSelect(e.target.value)}
+                style={{ minWidth: 160, padding: '8px 10px', borderRadius: 8, background: 'rgba(0,0,0,0.25)', color: 'var(--fg)', border: '1px solid rgba(255,255,255,0.06)' }}
+                aria-label="Select student"
+              >
+                <option value="">Select student</option>
+                {students.map((student) => (
+                  <option key={student.id} value={student.name}>{student.name}</option>
+                ))}
+              </select>
+
+              <input
+                ref={studentInputRef}
+                placeholder="Student or team name"
+                value={testStudentName}
+                onChange={(e) => handleStudentNameChange(e.target.value)}
+                style={{ flex: 1 }}
+              />
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <label className="text-small muted">Per card (s)</label>
               <input type="number" min="5" max="300" value={perCardSeconds} onChange={(e) => { const v = Math.max(5, Number(e.target.value || 15)); setPerCardSeconds(v); setPerCardRemaining(v); }} style={{ width: 80 }} />
@@ -933,21 +1053,17 @@ async function handleAnswer(cardId, quality) {
             setEditorOpen(false);
             deckService.getDeck(deckId).then((d) => {
               setDeck(d);
-              const s = studyService.createSession(d || { id: deckId, cards: [] });
-              s.queue.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-              sessionRef.current = s;
-              setSession(s);
-              setCurrentCard(studyService.nextCard(s));
+              const s = prepareFreshSession(d || { id: deckId, cards: [] });
+              setActiveSession(s);
+              studyService.persistSession(s).catch(() => {});
             });
           }}
           onSaved={(d) => {
             setEditorOpen(false);
             setDeck(d);
-            const s = studyService.createSession(d || { id: deckId, cards: [] });
-            s.queue.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-            sessionRef.current = s;
-            setSession(s);
-            setCurrentCard(studyService.nextCard(s));
+            const s = prepareFreshSession(d || { id: deckId, cards: [] });
+            setActiveSession(s);
+            studyService.persistSession(s).catch(() => {});
             const rect = document.querySelector('.flashcard')?.getBoundingClientRect() || null;
             showEncouragementRight('Deck saved ✅', { anchorRect: rect });
           }}
@@ -967,7 +1083,7 @@ async function handleAnswer(cardId, quality) {
           <div className="modal panel" style={{ maxWidth: 520 }}>
             <h3>Test Results</h3>
             <p><strong>{testStudentName || 'Anonymous'}</strong></p>
-            <p>Score: {testScore} / {testDeckRef.current.cards.length} ({Math.round((testScore / testDeckRef.current.cards.length) * 100)}%)</p>
+            <p>Score: {testScore} / {testResultTotal} ({testResultPct}%)</p>
             <p>Time: {Math.round(((Date.now() - (testStartTime || Date.now())) / 1000))}s</p>
             <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button className="btn btn--ghost" onClick={() => { setTestResultsVisible(false); /* remain in test mode */ }}>

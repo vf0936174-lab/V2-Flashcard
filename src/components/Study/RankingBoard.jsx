@@ -68,8 +68,11 @@ export default function RankingBoard({ deckId }) {
 
   async function saveEdit() {
     if (!editingId) return;
+    const cleanName = (editValues.name || '').trim();
     const updates = {
-      name: (editValues.name || '').trim(),
+      name: cleanName,
+      studentId: null,
+      studentName: cleanName || 'Anonymous',
       score: Number(editValues.score) || 0,
       total: Number(editValues.total) || 0,
       date: editValues.date ? new Date(editValues.date).toISOString() : new Date().toISOString()

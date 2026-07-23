@@ -88,19 +88,10 @@ export default function DeckEditor({ deckId = null, onClose, onSaved }) {
     try {
       let deck;
       if (deckId) {
-        // Update existing deck: replace cards safely
-        // We'll fetch deck, update name, then remove existing cards and re-add new ones
-        const existing = await deckService.getDeck(deckId);
-        if (!existing) throw new Error('Deck not found');
-        // delete and recreate to keep implementation simple (deckService supports createDeck with id)
-        await deckService.deleteDeck(existing.id);
-        deck = await deckService.createDeck({ id: existing.id, name, meta: existing.meta || {} });
+        deck = await deckService.updateDeck(deckId, { name, cards });
       } else {
         deck = await deckService.createDeck({ name });
-      }
-
-      for (const c of cards) {
-        await deckService.addCard(deck.id, { front: c.front || '', back: c.back || '' });
+        deck = await deckService.updateDeck(deck.id, { cards });
       }
 
       if (typeof onSaved === 'function') onSaved(deck);
